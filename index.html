@@ -1599,42 +1599,40 @@ function restoreDraft() {
 
 // ── Submit to Google Sheets
 async function submitForm() {
-  if (SUBMIT_ENDPOINT === 'YOUR_APPS_SCRIPT_URL') {
-    showToast('⚠ Please add your Google Apps Script URL first.');
-    return;
-  }
-
   const btn = document.querySelector('.btn-primary');
   btn.disabled = true;
   btn.textContent = 'Submitting…';
 
-  const data = collectFormData();
-  const respName = data['Respondent Name'] || 'Clinician';
-
-  // Build clean payload — full labels, no character limits, strip only true nulls
-  const payload = {};
-  payload['_submitted_at'] = new Date().toLocaleString();
-  payload['_respondent']   = respName;
-
-  Object.entries(data).forEach(([k, v]) => {
-    if (k.startsWith('_')) return;
-    const val = Array.isArray(v)
-      ? v.filter(x => x && x !== 'null').join('; ')
-      : String(v || '');
-    if (val && val !== 'null') payload[k] = val;
-  });
-
   try {
-    // Google Apps Script requires no-cors or a CORS proxy — we use no-cors
-    // and the script returns a redirect which fetch follows
+    const data = collectFormData();
+    const respName = data['Respondent Name'] || 'Clinician';
+
+    // Build payload — full labels, skip nulls
+    const payload = {
+      '_submitted_at': new Date().toLocaleString(),
+      '_respondent':   respName,
+    };
+    Object.entries(data).forEach(([k, v]) => {
+      if (k.startsWith('_')) return;
+      const val = Array.isArray(v)
+        ? v.filter(x => x && x !== 'null').join('; ')
+        : String(v || '');
+      if (val && val !== 'null') payload[k] = val;
+    });
+
+    // Send as URL-encoded form data — most reliable for Google Apps Script
+    const formBody = Object.entries(payload)
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
+      .join('&');
+
     await fetch(SUBMIT_ENDPOINT, {
       method: 'POST',
       mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: formBody
     });
 
-    // no-cors means we can't read the response — but if fetch didn't throw, it sent
+    // no-cors = can't read response, but if fetch didn't throw it went through
     document.getElementById('progress-bar').style.width = '100%';
     try { localStorage.removeItem('wellsco_obs_draft'); } catch(e) {}
     document.querySelector('.submit-section').innerHTML = `
@@ -1652,95 +1650,6 @@ async function submitForm() {
     showToast('⚠ Could not submit — please check your connection and try again.');
   }
 }
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 4000);
-}
-
-// ── Auto-assign name + value to all checkbox/radio inputs at load
-// ── Q6: prevent duplicate rank selections
-function initRankSelects() {
-  const selects = document.querySelectorAll('.rank-select');
-  selects.forEach(sel => {
-    sel.addEventListener('change', function() {
-      const chosen = this.value;
-      if (!chosen) return;
-      // Check if any other select already has this value
-      selects.forEach(other => {
-        if (other !== this && other.value === chosen) {
-          other.value = ''; // Clear the duplicate
-          // Flash the row to signal the conflict
-          const row = other.closest('.rank-row');
-          if (row) {
-            row.style.transition = 'background 0.2s';
-            row.style.background = 'rgba(217,79,79,0.12)';
-            setTimeout(() => { row.style.background = ''; }, 600);
-          }
-        }
-      });
-    });
-  });
-}
-
-function initFormInputs() {
-  document.querySelectorAll('.question').forEach(q => {
-    const qnum    = q.querySelector('.q-num')?.textContent?.trim() || q.id || 'q';
-    const safeName = 'q_' + qnum.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-
-    // Assign name + value to checkboxes
-    q.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-      if (!cb.name) cb.name = safeName;
-      if (!cb.value || cb.value === 'on') {
-        const labelEl = cb.closest('.check-label')?.querySelector('.check-text');
-        if (labelEl) {
-          const clone = labelEl.cloneNode(true);
-          clone.querySelectorAll('em').forEach(e => e.remove());
-          cb.value = clone.textContent.trim();
-        }
-      }
-    });
-
-    // Assign name + value to radios
-    q.querySelectorAll('input[type="radio"]').forEach(r => {
-      if (!r.value || r.value === 'on') {
-        const labelEl = r.closest('.check-label')?.querySelector('.check-text');
-        if (labelEl) {
-          const clone = labelEl.cloneNode(true);
-          clone.querySelectorAll('em').forEach(e => e.remove());
-          r.value = clone.textContent.trim();
-        }
-      }
-    });
-
-    // Auto-check the "Other" checkbox when other-text-input is typed into
-    q.querySelectorAll('.other-text-input').forEach(inp => {
-      inp.addEventListener('input', function() {
-        const wrap = this.closest('.other-input-wrap');
-        const cb   = wrap?.querySelector('input[type="checkbox"]');
-        if (!cb) return;
-        if (this.value.trim()) {
-          cb.checked = true;
-          cb.value   = 'Other: ' + this.value.trim();
-          wrap.closest('.other-row')?.querySelector('.check-label') && null;
-        } else {
-          cb.checked = false;
-        }
-        updateProgress();
-      });
-    });
-  });
-}
-
-window.addEventListener('load', function() {
-  initFormInputs();
-  initRankSelects();
-  restoreDraft();
-});
-document.getElementById('resp-date').valueAsDate = new Date();
-updateProgress();
-
 </script>
 </body>
 </html>
