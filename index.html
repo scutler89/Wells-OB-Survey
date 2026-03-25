@@ -1297,45 +1297,196 @@ window.addEventListener('scroll', () => {
   updateProgress();
 }, { passive: true });
 
-// ── Collect all form data
+// ── Human-readable field label map
+const FIELD_LABELS = {
+  'resp-name':     'Respondent Name',
+  'resp-employer': 'Employer / Practice Name',
+  'resp-role':     'Clinical Certification',
+  'resp-setting':  'Practice Setting',
+  'resp-volume':   'Patients Seen Per Month',
+  'resp-date':     'Interview Date',
+  'resp-email':    'Preferred Contact Email',
+  'resp-cell':     'Preferred Contact Cell',
+  'q5':   'Q5: Confidence patients acquire recommended products',
+  'q10':  'Q10: In-clinic product format preference',
+  'q11':  'Q11: Interest in subscription model',
+  'q12':  'Q12: Value of EHR/portal integration',
+  'q14':  'Q14: Currently advise patients on FSA/HSA eligibility',
+  'q15':  'Q15: How FSA/HSA labeling would change recommendations',
+  'q16':  'Q16: Value as employer-sponsored benefit',
+  'q17':  'Q17: Awareness of Medicare Advantage supplemental benefits',
+  'q19':  'Q19: Willingness to provide Letter of Medical Necessity',
+  'q23':  'Q23: Open to follow-up conversation',
+  'contact-method': 'Preferred Method of Contact',
+  'likert0': 'Likert: Patients ask about products during pregnancy/postpartum',
+  'likert1': 'Likert: Confident in current product recommendations',
+  'likert2': 'Likert: Product cost and access are real barriers',
+  'likert3': 'Likert: Marketplace would change my recommendations',
+  'likert4': 'Likert: Would refer patients to this marketplace',
+  'likert5': 'Likert: Would consider partnering/endorsing',
+  'likert6': 'Likert: Practice open to featuring this resource',
+};
+
+const TEXTAREA_LABELS = [
+  'Q2: What is missing from your current recommendation approach',
+  'Q5: Biggest barrier to patients acquiring recommended products',
+  'Q8: Which single patient type to build for first and why',
+  'Q9: What would make marketplace access practical in your clinic',
+  'Q10: Space or logistics concerns in your setting',
+  'Q11: What would need to be true for a subscription to work',
+  'Q13: Other thoughts on clinical validation communication',
+  'Q14: What would help you feel confident advising on FSA/HSA',
+  'Q15: Products you most wish were FSA/HSA eligible',
+  'Q16: Employer insurance type observations',
+  'Q17: Percentage of patients on Medicare Advantage',
+  'Q17b: Awareness of state Medicaid programs covering supportive products',
+  'Q17b: Which Medicaid MCOs or state programs are active in your region',
+  'Q18: Evidence you would want before recommending payor coverage',
+  'Q18: Additional evidence thoughts',
+  'Q19: What would make the LMN process acceptable',
+  'Q21: Ideal version of this concept',
+  'Q22: Referrals — name, role, contact',
+];
+
+const Q1_CATEGORIES = [
+  'Pregnancy comfort','Nausea & morning sickness','Prenatal nutrition',
+  'Labor preparation & comfort','Postpartum perineal care','Breastfeeding support',
+  'Postpartum recovery','Mental wellness','Infant care',
+  'Pelvic floor & intimacy','Home monitoring tools'
+];
+
+// ── Collect all form data with human-readable labels
 function collectFormData() {
   const data = {};
-  const radioGroups = {};
-  document.querySelectorAll('input[type="radio"]').forEach(el => {
-    if (el.name && el.checked) radioGroups[el.name] = el.value;
+
+  // ── Respondent info (named inputs)
+  ['resp-name','resp-employer','resp-role','resp-setting','resp-volume','resp-date','resp-email','resp-cell'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value) data[FIELD_LABELS[id] || id] = el.value;
   });
-  Object.assign(data, radioGroups);
-  const cbGroups = {};
-  document.querySelectorAll('input[type="checkbox"]').forEach(el => {
-    if (!el.name) return;
-    if (!cbGroups[el.name]) cbGroups[el.name] = [];
-    if (el.checked) cbGroups[el.name].push(
-      el.value || el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0] || 'checked'
-    );
+
+  // ── Q1 checkboxes — product categories
+  const q1checked = [];
+  document.querySelectorAll('#q1 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q1checked.push(label);
   });
-  Object.assign(data, cbGroups);
-  document.querySelectorAll('input[type="text"][id], input[type="email"][id], input[type="date"][id]').forEach(el => {
-    data[el.id] = el.value;
+  const q1other = document.querySelector('#q1 .other-text-input')?.value;
+  if (q1other) q1checked.push('Other: ' + q1other);
+  if (q1checked.length) data['Q1: Product categories currently recommended'] = q1checked.join('; ');
+
+  // ── Q2 checkboxes — how recommendations communicated
+  const q2checked = [];
+  document.querySelectorAll('#q2 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q2checked.push(label);
   });
-  document.querySelectorAll('textarea').forEach((el, i) => {
-    const q = el.closest('.question');
-    const qnum = q ? (q.querySelector('.q-num')?.textContent?.trim() || '') : '';
-    data[`response_${qnum || i}`] = el.value;
+  if (q2checked.length) data['Q2: How recommendations are communicated'] = q2checked.join('; ');
+
+  // ── Q3 checkboxes
+  const q3checked = [];
+  document.querySelectorAll('#q3 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q3checked.push(label);
   });
+  if (q3checked.length) data['Q3: What happens after a product recommendation'] = q3checked.join('; ');
+
+  // ── Q4 product grid
   document.querySelectorAll('.product-grid tbody tr').forEach((row, i) => {
     const cells = row.querySelectorAll('input[type="text"]');
     if (cells.length === 4) {
-      data[`product_${i+1}`] = [cells[0].value, cells[1].value, cells[2].value, cells[3].value].filter(Boolean).join(' | ');
+      const vals = [cells[0].value, cells[1].value, cells[2].value, cells[3].value].filter(Boolean);
+      if (vals.length) data[`Q4: Product recommendation ${i+1}`] = vals.join(' | ');
     }
   });
-  document.querySelectorAll('.rank-row').forEach((row, i) => {
+
+  // ── Q5 radio
+  const q5 = document.querySelector('input[name="q5"]:checked');
+  if (q5) data[FIELD_LABELS['q5']] = q5.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0] || q5.value;
+
+  // ── Q6 rankings
+  document.querySelectorAll('.rank-row').forEach((row) => {
     const sel = row.querySelector('.rank-select');
     const lbl = row.querySelector('.rank-text')?.textContent?.trim();
-    if (sel?.value) data[`rank_q6_item${i+1}`] = `${sel.value}: ${lbl}`;
+    if (sel?.value && lbl) data[`Q6 Rank: ${lbl}`] = sel.value;
   });
-  document.querySelectorAll('.other-text-input').forEach((el, i) => {
-    if (el.value) data[`other_text_${i+1}`] = el.value;
+
+  // ── Q7 symptom grid
+  document.querySelectorAll('#symptom-tbody tr').forEach((row, i) => {
+    const symptom = row.querySelector('.symptom-name')?.textContent?.trim()
+      || row.querySelector('input[type="text"]')?.value;
+    if (!symptom) return;
+    const hml = row.querySelector(`input[name="sym${i}hml"]:checked`)?.value || '';
+    const ynp = row.querySelector(`input[name="sym${i}ynp"]:checked`)?.value || '';
+    const commentary = row.querySelectorAll('input[type="text"]')[row.querySelector('.symptom-name') ? 0 : 1]?.value || '';
+    const parts = [hml && `Prevalence: ${hml}`, ynp && `Good products: ${ynp}`, commentary && `Key issues: ${commentary}`].filter(Boolean);
+    if (parts.length) data[`Q7: ${symptom}`] = parts.join(' | ');
   });
+
+  // ── Q8 checkboxes — patient types
+  const q8checked = [];
+  document.querySelectorAll('#q8 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q8checked.push(label);
+  });
+  if (q8checked.length) data['Q8: Patient types that would benefit most'] = q8checked.join('; ');
+
+  // ── Q9 checkboxes — marketplace access
+  const q9checked = [];
+  document.querySelectorAll('#q9 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q9checked.push(label);
+  });
+  if (q9checked.length) data['Q9: Preferred marketplace access model'] = q9checked.join('; ');
+
+  // ── Single-select radios (Q10-Q19, Q23)
+  ['q10','q11','q12','q14','q15','q16','q17','q19','q23','contact-method'].forEach(name => {
+    const el = document.querySelector(`input[name="${name}"]:checked`);
+    if (el) {
+      const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0] || el.value;
+      data[FIELD_LABELS[name] || `Q: ${name}`] = label;
+    }
+  });
+
+  // ── Q13 checkboxes — clinical validation communication
+  const q13checked = [];
+  document.querySelectorAll('#q13 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q13checked.push(label);
+  });
+  if (q13checked.length) data['Q13: How clinical validation should be communicated'] = q13checked.join('; ');
+
+  // ── Q17b Medicaid checkboxes
+  const q17b1 = [], q17b2 = [];
+  document.querySelectorAll('#q17b input[type="checkbox"]:checked').forEach((el, i) => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) (i < 4 ? q17b1 : q17b2).push(label);
+  });
+  if (q17b1.length) data['Q17b: Medicaid patient proportion'] = q17b1.join('; ');
+  if (q17b2.length) data['Q17b: Medicaid coverage outlook'] = q17b2.join('; ');
+
+  // ── Q18 checkboxes — payor evidence
+  const q18checked = [];
+  document.querySelectorAll('#q18 input[type="checkbox"]:checked').forEach(el => {
+    const label = el.closest('.check-label')?.querySelector('.check-text')?.textContent?.trim()?.split('\n')[0];
+    if (label) q18checked.push(label);
+  });
+  if (q18checked.length) data['Q18: What would need to be true for payor funding'] = q18checked.join('; ');
+
+  // ── Q20 Likert
+  for (let i = 0; i < 7; i++) {
+    const el = document.querySelector(`input[name="likert${i}"]:checked`);
+    if (el) data[FIELD_LABELS[`likert${i}`] || `Likert ${i}`] = el.value;
+  }
+
+  // ── Textareas — labeled in order
+  document.querySelectorAll('textarea').forEach((el, i) => {
+    if (el.value.trim()) {
+      const label = TEXTAREA_LABELS[i] || `Open response ${i+1}`;
+      data[label] = el.value.trim();
+    }
+  });
+
   return data;
 }
 
@@ -1375,8 +1526,11 @@ async function submitForm() {
   btn.textContent = 'Submitting…';
   const data = collectFormData();
   const role = data['resp-role'] || 'Clinician';
-  data['_subject'] = `Wells Market Co. Obstetrics Survey — ${role} — ${new Date().toLocaleDateString()}`;
-  data['_replyto'] = data['resp-email'] || '';
+  const respName = data['Respondent Name'] || role;
+  data['_subject'] = `Wells Market Co. · Obstetrics Survey · ${respName} · ${new Date().toLocaleDateString()}`;
+  data['_replyto'] = data['Preferred Contact Email'] || '';
+  data['_format'] = 'plain';
+  data['_format'] = 'plain';
   const flat = {};
   Object.entries(data).forEach(([k, v]) => { flat[k] = Array.isArray(v) ? (v.length ? v.join('; ') : '') : (v || ''); });
   try {
