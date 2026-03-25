@@ -1372,122 +1372,297 @@ const FIELD_LABELS = {
 // ── Collect all form data with human-readable labels
 function collectFormData() {
   const data = {};
+  const Y = 'Yes';
+  const N = 'null';
 
-  // Respondent info — always capture, null if blank
-  ['resp-name','resp-employer','resp-role','resp-setting','resp-volume','resp-date','resp-email','resp-cell'].forEach(id => {
-    const el = document.getElementById(id);
-    data[FIELD_LABELS[id] || id] = (el && el.value.trim()) ? el.value.trim() : 'null';
+  // Helper: get clean label text from a check-label
+  function labelText(el) {
+    const span = el.closest('.check-label')?.querySelector('.check-text');
+    if (!span) return '';
+    const c = span.cloneNode(true);
+    c.querySelectorAll('em').forEach(e => e.remove());
+    return c.textContent.trim();
+  }
+
+  // ── META
+  data['_submitted_at'] = new Date().toLocaleString();
+
+  // ── SECTION A
+  data['Respondent Name']          = document.getElementById('resp-name')?.value.trim()     || N;
+  data['Employer / Practice Name'] = document.getElementById('resp-employer')?.value.trim() || N;
+  data['Clinical Certification']   = document.getElementById('resp-role')?.value.trim()     || N;
+  data['Practice Setting']         = document.getElementById('resp-setting')?.value.trim()  || N;
+  data['Patients Seen Per Month']  = document.getElementById('resp-volume')?.value.trim()   || N;
+  data['Interview Date']           = document.getElementById('resp-date')?.value.trim()     || N;
+
+  // ── Q1 checkboxes
+  const q1opts = ['Pregnancy comfort','Nausea & morning sickness','Prenatal nutrition',
+    'Labor preparation & comfort','Postpartum perineal care','Breastfeeding support',
+    'Postpartum recovery','Mental wellness','Infant care','Pelvic floor & intimacy','Home monitoring tools'];
+  const q1 = document.getElementById('q1');
+  q1opts.forEach(opt => {
+    const cb = Array.from(q1?.querySelectorAll('input[type="checkbox"]') || [])
+      .find(c => { const c2=c.cloneNode(true); const s=c.closest('.check-label')?.querySelector('.check-text'); if(!s) return false; const cl=s.cloneNode(true); cl.querySelectorAll('em').forEach(e=>e.remove()); return cl.textContent.trim().startsWith(opt.substring(0,15)); });
+    data['Q1 | ' + opt] = (cb && cb.checked) ? Y : N;
   });
+  const q1other = q1?.querySelector('.other-text-input');
+  data['Q1 | Other'] = q1other?.value.trim() || N;
 
-  // Named inline text inputs (EHR, MA percentage etc)
-  ['q12-ehr','q17-ma-pct'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) data[FIELD_LABELS[id]] = el.value.trim() || 'null';
+  // ── Q2 checkboxes + textarea
+  const q2opts = ['Verbal recommendation during the visit','Printed handout or take-home sheet',
+    'After-visit summary / patient portal message','Nurse, MA, or care coordinator communicates on our behalf',
+    "We rely on patients to ask — we don't proactively recommend"];
+  const q2 = document.getElementById('q2');
+  q2opts.forEach((opt, i) => {
+    const cbs = q2?.querySelectorAll('input[type="checkbox"]');
+    data['Q2 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
   });
+  data['Q2 | Other'] = q2?.querySelector('.other-text-input')?.value.trim() || N;
+  data["What's missing from your current approach?"] = q2?.querySelector('textarea')?.value.trim() || N;
 
-  // Per-question collection
-  document.querySelectorAll('.question').forEach(q => {
-    const qnum  = q.querySelector('.q-num')?.textContent?.trim() || '';
-    const qtext = q.querySelector('.q-text')?.textContent?.trim() || '';
-    const label = qnum ? (qnum + ': ' + qtext) : qtext;
-
-    // Checkboxes
-    const checkedVals = [];
-    q.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
-      const labelEl = cb.closest('.check-label')?.querySelector('.check-text');
-      if (labelEl) {
-        const clone = labelEl.cloneNode(true);
-        clone.querySelectorAll('em').forEach(e => e.remove());
-        const txt = clone.textContent.trim();
-        if (txt) checkedVals.push(txt);
-      }
-    });
-    if (checkedVals.length) data[label] = checkedVals.join(' | ');
-
-    // Radios (skip Q7 symptom grid and Q20 likert — handled separately)
-    if (q.id !== 'q7' && q.id !== 'q22') {
-      const checkedRadio = q.querySelector('input[type="radio"]:checked');
-      if (checkedRadio) {
-        const labelEl = checkedRadio.closest('.check-label')?.querySelector('.check-text');
-        const val = labelEl ? (() => { const c = labelEl.cloneNode(true); c.querySelectorAll('em').forEach(e=>e.remove()); return c.textContent.trim(); })() : checkedRadio.value;
-        if (val && !checkedVals.length) data[label] = val;
-        else if (val && checkedVals.length) data[label + ' (radio)'] = val;
-      }
-    }
-
-    // Textareas — always capture, null if blank
-    q.querySelectorAll('textarea').forEach((ta, i) => {
-      const labelSpan = ta.previousElementSibling?.classList?.contains('write-in-label')
-        ? ta.previousElementSibling
-        : ta.parentElement?.querySelector('.write-in-label');
-      const taLabel = labelSpan
-        ? labelSpan.textContent.trim()
-        : (i === 0 ? label + ' — open response' : label + ' — follow-up ' + (i+1));
-      data[taLabel] = ta.value.trim() || 'null';
-    });
-
-    // Other write-in text inputs — sync value and add to selections
-    q.querySelectorAll('.other-text-input').forEach(inp => {
-      if (!inp.value.trim()) return;
-      const otherVal = 'Other: ' + inp.value.trim();
-      // Update the checkbox value in real time so it submits correctly
-      const cb = inp.closest('.other-input-wrap')?.querySelector('input[type="checkbox"]');
-      if (cb) { cb.checked = true; cb.value = otherVal; }
-      // Append to the question's answer if selections exist, else create entry
-      if (data[label]) data[label] = data[label] + ' | ' + otherVal;
-      else data[label + ' — other'] = otherVal;
-    });
+  // ── Q3 checkboxes
+  const q3opts = ["I name a specific brand; the patient sources it themselves",
+    "I give general guidance (e.g., 'fragrance-free lotion') with no brand",
+    'My clinic has a resource list we hand out','We stock some products on-site for patients',
+    'I direct them to Amazon or a general retailer',"I honestly don't know what they do with the recommendation"];
+  const q3 = document.getElementById('q3');
+  q3opts.forEach((opt, i) => {
+    const cbs = q3?.querySelectorAll('input[type="checkbox"]');
+    data['Q3 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
   });
+  data['Q3 | Other'] = q3?.querySelector('.other-text-input')?.value.trim() || N;
 
-  // Q4 product grid — capture every row, null for blank cells
-  const q4Headers = ['Product Name', 'Brand', 'Where to Purchase', 'Notes'];
-  const productRows = [];
+  // ── Q4 product grid — 10 rows × 4 cols
+  const q4cols = ['Product Name','Brand','Where to Purchase','Notes'];
   document.querySelectorAll('.product-grid tbody tr').forEach((row, i) => {
     const cells = row.querySelectorAll('input[type="text"]');
-    if (cells.length === 4) {
-      const vals = Array.from(cells).map(c => c.value.trim() || 'null');
-      // Only include the row if at least one cell has real data
-      if (vals.some(v => v !== 'null')) {
-        const formatted = q4Headers.map((h, j) => h + ': ' + vals[j]).join(' | ');
-        productRows.push('Row ' + (i+1) + ' — ' + formatted);
-      }
-    }
+    q4cols.forEach((col, j) => {
+      data['Q4 | Product ' + (i+1) + ' | ' + col] = cells[j]?.value.trim() || N;
+    });
   });
-  if (productRows.length) data['Q4: Specific product recommendations'] = productRows.join('  ///  ');
-  else data['Q4: Specific product recommendations'] = 'null';
 
-  // Q6 rankings — capture all rows, use null for unranked
-  const rankingsAll = [];
-  document.querySelectorAll('.rank-row').forEach(row => {
+  // ── Q5 radio + textarea
+  const q5opts = ['Very confident — we follow up and confirm',
+    'Somewhat confident — most seem to follow through',
+    'Not very confident — cost and access are common barriers',
+    "I have no idea — we don't track this"];
+  const q5 = document.getElementById('q5');
+  const q5checked = q5?.querySelector('input[type="radio"]:checked');
+  q5opts.forEach(opt => {
+    data['Q5 | ' + opt] = (q5checked && labelText(q5checked) === opt) ? Y : N;
+  });
+  data['Biggest barrier you observe:'] = q5?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q6 rank selects
+  const q6items = ['Treatment adherence / completion rates','Patient-reported quality of life',
+    'Reduction in unplanned clinical visits for manageable symptoms','Patient satisfaction scores',
+    'Caregiver burden reduction','Emotional wellbeing and perinatal mental health',
+    'Recovery speed or functional restoration postpartum'];
+  const q6rows = document.querySelectorAll('#q6 .rank-row, .question#q6 .rank-row');
+  document.getElementById('q6')?.querySelectorAll('.rank-row').forEach((row, i) => {
     const sel = row.querySelector('.rank-select');
-    const lbl = row.querySelector('.rank-text')?.textContent?.trim();
-    if (lbl) rankingsAll.push((sel?.value || 'null') + ': ' + lbl);
+    data['Q6 | Rank | ' + (q6items[i] || 'Item '+(i+1))] = sel?.value || N;
   });
-  if (rankingsAll.length) data['Q6: Outcome priority rankings'] = rankingsAll.join(' | ');
+  data['Q6 | Other'] = document.getElementById('q6')?.querySelector('.other-text-input')?.value.trim() || N;
 
-  // Q7 symptom grid — capture all rows and columns, null for unanswered
-  const symptomRows = [];
+  // ── Q7 symptom grid
+  const q7symptoms = ['Nausea & vomiting of pregnancy','Pelvic girdle pain','Perineal trauma & recovery',
+    'Breastfeeding difficulties & pain','Postpartum fatigue','Postpartum mood concerns',
+    'Diastasis recti','Pelvic floor dysfunction','Sleep disruption',
+    'Postpartum sexual health concerns','Hypertension / blood pressure management',
+    'Weight monitoring & gestational weight gain'];
   document.querySelectorAll('#symptom-tbody tr').forEach((row, i) => {
-    const symptomName = row.querySelector('.symptom-name')?.textContent?.trim()
-      || row.querySelector('input[type="text"]')?.value?.trim()
-      || null;
-    if (!symptomName) return; // skip truly empty Other rows
-    const hml         = row.querySelector('input[name="sym' + i + 'hml"]:checked')?.value || 'null';
-    const ynp         = row.querySelector('input[name="sym' + i + 'ynp"]:checked')?.value || 'null';
-    const allInputs   = row.querySelectorAll('input[type="text"]');
-    const commentary  = allInputs[allInputs.length - 1]?.value?.trim() || 'null';
-    symptomRows.push(
-      symptomName +
-      ' → Prevalence: ' + hml +
-      ' | Good products: ' + ynp +
-      ' | Key issues: ' + commentary
-    );
+    const symName = i < q7symptoms.length ? q7symptoms[i]
+      : (row.querySelector('input[type="text"]')?.value.trim() || ('Other symptom ' + (i - q7symptoms.length + 1)));
+    const hml = row.querySelector('input[name="sym' + i + 'hml"]:checked')?.value || N;
+    const ynp = row.querySelector('input[name="sym' + i + 'ynp"]:checked')?.value || N;
+    const inputs = row.querySelectorAll('input[type="text"]');
+    const notes  = inputs[inputs.length-1]?.value.trim() || N;
+    data['Q7 | ' + symName + ' | Prevalence'] = hml;
+    data['Q7 | ' + symName + ' | Good products exist'] = ynp;
+    data['Q7 | ' + symName + ' | Key issues'] = notes;
   });
-  if (symptomRows.length) data['Q7: Symptom & product gap assessment'] = symptomRows.join('  ///  ');
-  else data['Q7: Symptom & product gap assessment'] = 'null';
 
-  // Q20 Likert — capture all 7 rows, null for unanswered
-  const likertStatements = [
+  // ── Q8 checkboxes + textarea
+  const q8opts = ['First-time pregnant patients (nulliparous)','Multiparous patients',
+    'High-risk / medically complex / chronic condition pregnancies','Patients planning unmedicated birth',
+    'Cesarean birth & recovery patients','Patients with hyperemesis gravidarum',
+    'Patients experiencing perinatal mood disorders','Postpartum patients (0–6 weeks)',
+    'Extended postpartum (6 weeks–1 year)','Preconception / fertility-planning patients'];
+  const q8 = document.getElementById('q8');
+  q8opts.forEach((opt, i) => {
+    const cbs = q8?.querySelectorAll('input[type="checkbox"]');
+    data['Q8 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
+  });
+  data['Q8 | Other'] = q8?.querySelector('.other-text-input')?.value.trim() || N;
+  data['Q8 | Which single patient type to build for first'] = q8?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q9 checkboxes + textarea
+  const q9opts = ['Digital marketplace — patients shop and order to their home themselves',
+    'Practice-curated link — we share a custom URL pre-filtered for their condition',
+    'On-site kiosk or display — products available for immediate take-home at the clinic',
+    "Care team-initiated — nurse or coordinator places the order on the patient's behalf",
+    'Combination — some products in-clinic; broader catalog available online'];
+  const q9 = document.getElementById('q9');
+  q9opts.forEach((opt, i) => {
+    const cbs = q9?.querySelectorAll('input[type="checkbox"]');
+    data['Q9 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
+  });
+  data['Q9 | Other'] = q9?.querySelector('.other-text-input')?.value.trim() || N;
+  data['Q9 | What would make this practical in your clinic'] = q9?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q10 radios + textarea
+  const q10opts = ['Small curated take-home kits stocked at nursing stations or check-out',
+    'Branded display rack in the waiting area — patients self-select',
+    'Sample-only display — patients order full-size products online',
+    'Nothing in-clinic — patients prefer handling this outside the clinical environment'];
+  const q10 = document.getElementById('q10');
+  const q10checked = q10?.querySelector('input[type="radio"]:checked');
+  q10opts.forEach(opt => {
+    data['Q10 | ' + opt] = (q10checked && labelText(q10checked) === opt) ? Y : N;
+  });
+  data['Q10 | Other'] = q10?.querySelector('.other-text-input')?.value.trim() || N;
+  data['Q10 | Space or logistics concerns'] = q10?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q11 radios + textarea
+  const q11opts = ['Very interested — patients need ongoing replenishment and hate reordering',
+    'Somewhat interested — would work for some patients, not all',
+    "Neutral — I don't have a strong view on delivery model",
+    'Not interested — patients prefer to buy what they need, when they need it',
+    'Concerned — subscription adds financial burden patients may not want'];
+  const q11 = document.getElementById('q11');
+  const q11checked = q11?.querySelector('input[type="radio"]:checked');
+  q11opts.forEach(opt => {
+    data['Q11 | ' + opt] = (q11checked && labelText(q11checked) === opt) ? Y : N;
+  });
+  data['Q11 | What would need to be true for subscription'] = q11?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q12 radios + EHR input
+  const q12opts = ['Extremely valuable — closes the loop between clinical recommendation and patient action',
+    'Valuable — would use it if setup was straightforward',
+    'Neutral — nice to have but not a deciding factor',
+    'Low priority — adds complexity without clear benefit',
+    'Concerned about data privacy / security implications'];
+  const q12 = document.getElementById('q12');
+  const q12checked = q12?.querySelector('input[type="radio"]:checked');
+  q12opts.forEach(opt => {
+    data['Q12 | ' + opt] = (q12checked && labelText(q12checked) === opt) ? Y : N;
+  });
+  data['Q12 | EHR system'] = document.getElementById('q12-ehr')?.value.trim() || N;
+
+  // ── Q13 checkboxes
+  const q13opts = ['A named Clinical Advisory Board with visible specialist credentials',
+    'Formal endorsement from a recognizable specialty society (ACOG, ACNM, AWHONN)',
+    "Your practice's own recommendation — 'Approved by your care team at [Clinic]'",
+    'Peer patient reviews and testimonials from people with the same experience',
+    'A combination of clinician endorsement and patient community validation'];
+  const q13 = document.getElementById('q13');
+  q13opts.forEach((opt, i) => {
+    const cbs = q13?.querySelectorAll('input[type="checkbox"]');
+    data['Q13 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
+  });
+  data['Q13 | Other'] = q13?.querySelector('.other-text-input')?.value.trim() || N;
+
+  // ── Q14 radios + textarea
+  const q14opts = ['Yes — we proactively tell patients this','Sometimes — if a patient asks about cost',
+    "No — I assumed most products in this category weren't eligible",
+    "No — I wasn't sure of the current FSA/HSA rules",
+    'No — we leave financial topics to billing or social work'];
+  const q14 = document.getElementById('q14');
+  const q14checked = q14?.querySelector('input[type="radio"]:checked');
+  q14opts.forEach(opt => {
+    data['Q14 | ' + opt] = (q14checked && labelText(q14checked) === opt) ? Y : N;
+  });
+  data['Q14 | What would help you advise on FSA/HSA'] = q14?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q15 radios + textarea
+  const q15opts = ['Significantly — cost is a major barrier and this removes it',
+    'Somewhat — helpful but not the deciding factor for me',
+    'Minimal — my recommendations are based on clinical need, not payment method',
+    'Unsure — depends on which products qualify'];
+  const q15 = document.getElementById('q15');
+  const q15checked = q15?.querySelector('input[type="radio"]:checked');
+  q15opts.forEach(opt => {
+    data['Q15 | ' + opt] = (q15checked && labelText(q15checked) === opt) ? Y : N;
+  });
+  data['Q15 | Products most wished were FSA/HSA eligible'] = q15?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q16 radios + textarea
+  const q16opts = ['Yes — this fills a real gap in the employer benefits stack',
+    "Interesting — I'd want to understand the implementation model",
+    'Neutral — my patients access care through many different employers',
+    'Skeptical — employer programs often have poor uptake in my experience'];
+  const q16 = document.getElementById('q16');
+  const q16checked = q16?.querySelector('input[type="radio"]:checked');
+  q16opts.forEach(opt => {
+    data['Q16 | ' + opt] = (q16checked && labelText(q16checked) === opt) ? Y : N;
+  });
+  data['Q16 | Employer insights'] = q16?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q17 radios + MA% input + textarea
+  const q17opts = ["Yes — I'm aware and think it's a strong opportunity",
+    "I've heard of it but don't know how it works operationally",
+    "No — I wasn't aware of this supplemental benefit capability",
+    'Aware, but skeptical — MA plan implementation is usually difficult in practice'];
+  const q17 = document.getElementById('q17');
+  const q17checked = q17?.querySelector('input[type="radio"]:checked');
+  q17opts.forEach(opt => {
+    data['Q17 | ' + opt] = (q17checked && labelText(q17checked) === opt) ? Y : N;
+  });
+  data['Q17 | Medicare Advantage % of patients'] = document.getElementById('q17-ma-pct')?.value.trim() || N;
+
+  // ── Q18 checkboxes + textarea
+  const q18opts = ['A significant portion of my patients are on Medicaid — coverage here would be high-impact',
+    'Some Medicaid patients, but not the majority of my panel',
+    'Few or no Medicaid patients in my practice',"I don't track insurance type closely"];
+  const q18 = document.getElementById('q18');
+  q18opts.forEach((opt, i) => {
+    const cbs = q18?.querySelectorAll('input[type="checkbox"]');
+    data['Q18 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
+  });
+  data['Q18 | State Medicaid programs awareness'] = q18?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q19 checkboxes + textarea
+  const q19opts = ['I believe Medicaid coverage is realistic if outcomes data exists',
+    'Medicaid coverage is unlikely near-term — reimbursement policy moves too slowly',
+    'Medicaid managed care organizations (MCOs) may be a faster path than fee-for-service',
+    "Unsure — I don't have enough visibility into Medicaid policy"];
+  const q19 = document.getElementById('q19');
+  q19opts.forEach((opt, i) => {
+    const cbs = q19?.querySelectorAll('input[type="checkbox"]');
+    data['Q19 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
+  });
+  data['Q19 | Active Medicaid MCOs or state programs'] = q19?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q20 checkboxes + textarea
+  const q20opts = ['Demonstrated outcomes data linking product use to adherence or fewer unplanned visits',
+    'Reduction in ED use or hospitalizations for manageable symptoms',
+    'Patient satisfaction or quality-of-life score improvement',
+    'A competitive cost-per-member-per-month vs. alternative interventions',
+    'Endorsement from a specialty society or major academic medical center'];
+  const q20 = document.getElementById('q20');
+  q20opts.forEach((opt, i) => {
+    const cbs = q20?.querySelectorAll('input[type="checkbox"]');
+    data['Q20 | ' + opt] = (cbs && cbs[i] && cbs[i].checked) ? Y : N;
+  });
+  data['Q20 | Other'] = q20?.querySelector('.other-text-input')?.value.trim() || N;
+  data['Q20 | Evidence needed before recommending payor coverage'] = q20?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q21 radios + textarea
+  const q21opts = ["Very willing — if it helps patients access products they need, I'd sign",
+    'Willing — if the process is streamlined and takes under 5 minutes',
+    'Neutral — depends on the product and the clinical evidence behind it',
+    'Reluctant — LMN documentation adds to my administrative burden',
+    'Not willing — this is outside what I should be doing'];
+  const q21 = document.getElementById('q21');
+  const q21checked = q21?.querySelector('input[type="radio"]:checked');
+  q21opts.forEach(opt => {
+    data['Q21 | ' + opt] = (q21checked && labelText(q21checked) === opt) ? Y : N;
+  });
+  data['Q21 | What would make LMN process acceptable'] = q21?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q22 Likert — each statement = own field
+  const likertStmts = [
     'Patients ask about products during pregnancy/postpartum',
     'Confident in current product recommendations',
     'Product cost and access are real barriers',
@@ -1496,28 +1671,34 @@ function collectFormData() {
     'Would consider partnering or endorsing',
     'Practice open to featuring this resource',
   ];
-  const likertRows = [];
-  for (let i = 0; i < 7; i++) {
+  likertStmts.forEach((stmt, i) => {
     const el = document.querySelector('input[name="likert' + i + '"]:checked');
-    likertRows.push(likertStatements[i] + ': ' + (el ? el.value : 'null'));
-  }
-  data['Q22: Likert scale responses'] = likertRows.join(' | ');
+    data['Q22 | Likert | ' + stmt] = el ? el.value : N;
+  });
 
-  // Contact method — always capture, null if not selected
+  // ── Q23 — open text
+  const q23 = document.getElementById('q23');
+  data['Q23 | Ideal version description'] = q23?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q24 — open text
+  const q24 = document.getElementById('q24');
+  data['Q24 | Referral contact info'] = q24?.querySelector('textarea')?.value.trim() || N;
+
+  // ── Q25 radios + contact
+  const q25opts = ['Yes — please reach out','Maybe — send more details first',
+    'No — but happy this conversation helped'];
+  const q25 = document.getElementById('q25');
+  const q25checked = q25?.querySelector('input[name="q25"]:checked');
+  q25opts.forEach(opt => {
+    data['Q25 | ' + opt] = (q25checked && labelText(q25checked) === opt) ? Y : N;
+  });
   const contactMethod = document.querySelector('input[name="contact-method"]:checked');
-  data['Preferred Contact Method'] = contactMethod ? contactMethod.value : 'null';
-
-  // Q23 follow-up — always capture, null if not selected
-  const q23radio = document.querySelector('input[name="q25"]:checked');
-  const q23labelEl = q23radio?.closest('.check-label')?.querySelector('.check-text');
-  const q23clone = q23labelEl?.cloneNode(true);
-  q23clone?.querySelectorAll('em').forEach(e => e.remove());
-  data['Q25: Open to follow-up conversation'] = q23clone ? q23clone.textContent.trim() : 'null';
+  data['Q25 | Preferred Contact Method'] = contactMethod ? contactMethod.value : N;
+  data['Q25 | Contact Email'] = document.getElementById('resp-email')?.value.trim() || N;
+  data['Q25 | Contact Cell']  = document.getElementById('resp-cell')?.value.trim()  || N;
 
   return data;
 }
-
-
 // ── Save to localStorage — stores raw form state (not the submission payload)
 function saveProgress() {
   try {
@@ -1678,15 +1859,256 @@ async function submitForm() {
 
   try {
     const data = collectFormData();
-    const respName = data['Respondent Name'] || 'Clinician';
+    const respName = data['Respondent Name'] !== 'null' ? data['Respondent Name'] : 'Clinician';
 
-    // Build payload — always include every field, 'null' if unanswered
-    const payload = {
-      '_submitted_at': new Date().toLocaleString(),
-      '_respondent':   respName,
-    };
+    // Build payload in exact survey order — null for every unanswered field
+    const FIELD_ORDER = [
+      '_submitted_at',
+      'Respondent Name',
+      'Employer / Practice Name',
+      'Clinical Certification',
+      'Practice Setting',
+      'Patients Seen Per Month',
+      'Interview Date',
+      'Q1 | Pregnancy comfort',
+      'Q1 | Nausea & morning sickness',
+      'Q1 | Prenatal nutrition',
+      'Q1 | Labor preparation & comfort',
+      'Q1 | Postpartum perineal care',
+      'Q1 | Breastfeeding support',
+      'Q1 | Postpartum recovery',
+      'Q1 | Mental wellness',
+      'Q1 | Infant care',
+      'Q1 | Pelvic floor & intimacy',
+      'Q1 | Home monitoring tools',
+      'Q1 | Other',
+      'Q2 | Verbal recommendation during the visit',
+      'Q2 | Printed handout or take-home sheet',
+      'Q2 | After-visit summary / patient portal message',
+      'Q2 | Nurse, MA, or care coordinator communicates on our behalf',
+      'Q2 | We rely on patients to ask — we don't proactively recommend',
+      'Q2 | Other',
+      'What's missing from your current approach?',
+      'Q3 | I name a specific brand; the patient sources it themselves',
+      'Q3 | I give general guidance (e.g., 'fragrance-free lotion') with no brand',
+      'Q3 | My clinic has a resource list we hand out',
+      'Q3 | We stock some products on-site for patients',
+      'Q3 | I direct them to Amazon or a general retailer',
+      'Q3 | I honestly don't know what they do with the recommendation',
+      'Q3 | Other',
+      'Q4 | Product 1 | Product Name',
+      'Q4 | Product 1 | Brand',
+      'Q4 | Product 1 | Where to Purchase',
+      'Q4 | Product 1 | Notes',
+      'Q4 | Product 2 | Product Name',
+      'Q4 | Product 2 | Brand',
+      'Q4 | Product 2 | Where to Purchase',
+      'Q4 | Product 2 | Notes',
+      'Q4 | Product 3 | Product Name',
+      'Q4 | Product 3 | Brand',
+      'Q4 | Product 3 | Where to Purchase',
+      'Q4 | Product 3 | Notes',
+      'Q4 | Product 4 | Product Name',
+      'Q4 | Product 4 | Brand',
+      'Q4 | Product 4 | Where to Purchase',
+      'Q4 | Product 4 | Notes',
+      'Q4 | Product 5 | Product Name',
+      'Q4 | Product 5 | Brand',
+      'Q4 | Product 5 | Where to Purchase',
+      'Q4 | Product 5 | Notes',
+      'Q4 | Product 6 | Product Name',
+      'Q4 | Product 6 | Brand',
+      'Q4 | Product 6 | Where to Purchase',
+      'Q4 | Product 6 | Notes',
+      'Q4 | Product 7 | Product Name',
+      'Q4 | Product 7 | Brand',
+      'Q4 | Product 7 | Where to Purchase',
+      'Q4 | Product 7 | Notes',
+      'Q4 | Product 8 | Product Name',
+      'Q4 | Product 8 | Brand',
+      'Q4 | Product 8 | Where to Purchase',
+      'Q4 | Product 8 | Notes',
+      'Q4 | Product 9 | Product Name',
+      'Q4 | Product 9 | Brand',
+      'Q4 | Product 9 | Where to Purchase',
+      'Q4 | Product 9 | Notes',
+      'Q4 | Product 10 | Product Name',
+      'Q4 | Product 10 | Brand',
+      'Q4 | Product 10 | Where to Purchase',
+      'Q4 | Product 10 | Notes',
+      'Q5 | Very confident — we follow up and confirm',
+      'Q5 | Somewhat confident — most seem to follow through',
+      'Q5 | Not very confident — cost and access are common barriers',
+      'Q5 | I have no idea — we don't track this',
+      'Biggest barrier you observe:',
+      'Q6 | Rank | Treatment adherence / completion rates',
+      'Q6 | Rank | Patient-reported quality of life',
+      'Q6 | Rank | Reduction in unplanned clinical visits for manageable symptoms',
+      'Q6 | Rank | Patient satisfaction scores',
+      'Q6 | Rank | Caregiver burden reduction',
+      'Q6 | Rank | Emotional wellbeing and perinatal mental health',
+      'Q6 | Rank | Recovery speed or functional restoration postpartum',
+      'Q6 | Other',
+      'Q7 | Nausea & vomiting of pregnancy | Prevalence',
+      'Q7 | Nausea & vomiting of pregnancy | Good products exist',
+      'Q7 | Nausea & vomiting of pregnancy | Key issues',
+      'Q7 | Pelvic girdle pain | Prevalence',
+      'Q7 | Pelvic girdle pain | Good products exist',
+      'Q7 | Pelvic girdle pain | Key issues',
+      'Q7 | Perineal trauma & recovery | Prevalence',
+      'Q7 | Perineal trauma & recovery | Good products exist',
+      'Q7 | Perineal trauma & recovery | Key issues',
+      'Q7 | Breastfeeding difficulties & pain | Prevalence',
+      'Q7 | Breastfeeding difficulties & pain | Good products exist',
+      'Q7 | Breastfeeding difficulties & pain | Key issues',
+      'Q7 | Postpartum fatigue | Prevalence',
+      'Q7 | Postpartum fatigue | Good products exist',
+      'Q7 | Postpartum fatigue | Key issues',
+      'Q7 | Postpartum mood concerns | Prevalence',
+      'Q7 | Postpartum mood concerns | Good products exist',
+      'Q7 | Postpartum mood concerns | Key issues',
+      'Q7 | Diastasis recti | Prevalence',
+      'Q7 | Diastasis recti | Good products exist',
+      'Q7 | Diastasis recti | Key issues',
+      'Q7 | Pelvic floor dysfunction | Prevalence',
+      'Q7 | Pelvic floor dysfunction | Good products exist',
+      'Q7 | Pelvic floor dysfunction | Key issues',
+      'Q7 | Sleep disruption | Prevalence',
+      'Q7 | Sleep disruption | Good products exist',
+      'Q7 | Sleep disruption | Key issues',
+      'Q7 | Postpartum sexual health concerns | Prevalence',
+      'Q7 | Postpartum sexual health concerns | Good products exist',
+      'Q7 | Postpartum sexual health concerns | Key issues',
+      'Q7 | Hypertension / blood pressure management | Prevalence',
+      'Q7 | Hypertension / blood pressure management | Good products exist',
+      'Q7 | Hypertension / blood pressure management | Key issues',
+      'Q7 | Weight monitoring & gestational weight gain | Prevalence',
+      'Q7 | Weight monitoring & gestational weight gain | Good products exist',
+      'Q7 | Weight monitoring & gestational weight gain | Key issues',
+      'Q7 | Other symptom 1 | Prevalence',
+      'Q7 | Other symptom 1 | Good products exist',
+      'Q7 | Other symptom 1 | Key issues',
+      'Q7 | Other symptom 2 | Prevalence',
+      'Q7 | Other symptom 2 | Good products exist',
+      'Q7 | Other symptom 2 | Key issues',
+      'Q8 | First-time pregnant patients (nulliparous)',
+      'Q8 | Multiparous patients',
+      'Q8 | High-risk / medically complex / chronic condition pregnancies',
+      'Q8 | Patients planning unmedicated birth',
+      'Q8 | Cesarean birth & recovery patients',
+      'Q8 | Patients with hyperemesis gravidarum',
+      'Q8 | Patients experiencing perinatal mood disorders',
+      'Q8 | Postpartum patients (0–6 weeks)',
+      'Q8 | Extended postpartum (6 weeks–1 year)',
+      'Q8 | Preconception / fertility-planning patients',
+      'Q8 | Other',
+      'Q8 | Which single patient type to build for first',
+      'Q9 | Digital marketplace — patients shop and order to their home themselves',
+      'Q9 | Practice-curated link — we share a custom URL pre-filtered for their condition',
+      'Q9 | On-site kiosk or display — products available for immediate take-home at the clinic',
+      'Q9 | Care team-initiated — nurse or coordinator places the order on the patient's behalf',
+      'Q9 | Combination — some products in-clinic; broader catalog available online',
+      'Q9 | Other',
+      'Q9 | What would make this practical in your clinic',
+      'Q10 | Small curated take-home kits stocked at nursing stations or check-out',
+      'Q10 | Branded display rack in the waiting area — patients self-select',
+      'Q10 | Sample-only display — patients order full-size products online',
+      'Q10 | Nothing in-clinic — patients prefer handling this outside the clinical environment',
+      'Q10 | Other',
+      'Q10 | Space or logistics concerns',
+      'Q11 | Very interested — patients need ongoing replenishment and hate reordering',
+      'Q11 | Somewhat interested — would work for some patients, not all',
+      'Q11 | Neutral — I don't have a strong view on delivery model',
+      'Q11 | Not interested — patients prefer to buy what they need, when they need it',
+      'Q11 | Concerned — subscription adds financial burden patients may not want',
+      'Q11 | What would need to be true for subscription',
+      'Q12 | Extremely valuable — closes the loop between clinical recommendation and patient action',
+      'Q12 | Valuable — would use it if setup was straightforward',
+      'Q12 | Neutral — nice to have but not a deciding factor',
+      'Q12 | Low priority — adds complexity without clear benefit',
+      'Q12 | Concerned about data privacy / security implications',
+      'Q12 | EHR system',
+      'Q13 | A named Clinical Advisory Board with visible specialist credentials',
+      'Q13 | Formal endorsement from a recognizable specialty society (ACOG, ACNM, AWHONN)',
+      'Q13 | Your practice's own recommendation — 'Approved by your care team at [Clinic]'',
+      'Q13 | Peer patient reviews and testimonials from people with the same experience',
+      'Q13 | A combination of clinician endorsement and patient community validation',
+      'Q13 | Other',
+      'Q14 | Yes — we proactively tell patients this',
+      'Q14 | Sometimes — if a patient asks about cost',
+      'Q14 | No — I assumed most products in this category weren't eligible',
+      'Q14 | No — I wasn't sure of the current FSA/HSA rules',
+      'Q14 | No — we leave financial topics to billing or social work',
+      'Q14 | What would help you advise on FSA/HSA',
+      'Q15 | Significantly — cost is a major barrier and this removes it',
+      'Q15 | Somewhat — helpful but not the deciding factor for me',
+      'Q15 | Minimal — my recommendations are based on clinical need, not payment method',
+      'Q15 | Unsure — depends on which products qualify',
+      'Q15 | Products most wished were FSA/HSA eligible',
+      'Q16 | Yes — this fills a real gap in the employer benefits stack',
+      'Q16 | Interesting — I'd want to understand the implementation model',
+      'Q16 | Neutral — my patients access care through many different employers',
+      'Q16 | Skeptical — employer programs often have poor uptake in my experience',
+      'Q16 | Employer insights',
+      'Q17 | Yes — I'm aware and think it's a strong opportunity',
+      'Q17 | I've heard of it but don't know how it works operationally',
+      'Q17 | No — I wasn't aware of this supplemental benefit capability',
+      'Q17 | Aware, but skeptical — MA plan implementation is usually difficult in practice',
+      'Q17 | Medicare Advantage % of patients',
+      'Q18 | A significant portion of my patients are on Medicaid — coverage here would be high-impact',
+      'Q18 | Some Medicaid patients, but not the majority of my panel',
+      'Q18 | Few or no Medicaid patients in my practice',
+      'Q18 | I don't track insurance type closely',
+      'Q18 | State Medicaid programs awareness',
+      'Q19 | I believe Medicaid coverage is realistic if outcomes data exists',
+      'Q19 | Medicaid coverage is unlikely near-term — reimbursement policy moves too slowly',
+      'Q19 | Medicaid managed care organizations (MCOs) may be a faster path than fee-for-service',
+      'Q19 | Unsure — I don't have enough visibility into Medicaid policy',
+      'Q19 | Active Medicaid MCOs or state programs',
+      'Q20 | Demonstrated outcomes data linking product use to adherence or fewer unplanned visits',
+      'Q20 | Reduction in ED use or hospitalizations for manageable symptoms',
+      'Q20 | Patient satisfaction or quality-of-life score improvement',
+      'Q20 | A competitive cost-per-member-per-month vs. alternative interventions',
+      'Q20 | Endorsement from a specialty society or major academic medical center',
+      'Q20 | Other',
+      'Q20 | Evidence needed before recommending payor coverage',
+      'Q21 | Very willing — if it helps patients access products they need, I'd sign',
+      'Q21 | Willing — if the process is streamlined and takes under 5 minutes',
+      'Q21 | Neutral — depends on the product and the clinical evidence behind it',
+      'Q21 | Reluctant — LMN documentation adds to my administrative burden',
+      'Q21 | Not willing — this is outside what I should be doing',
+      'Q21 | What would make LMN process acceptable',
+      'Q22 | Likert | Patients ask about products during pregnancy/postpartum',
+      'Q22 | Likert | Confident in current product recommendations',
+      'Q22 | Likert | Product cost and access are real barriers',
+      'Q22 | Likert | Marketplace would change my recommendations',
+      'Q22 | Likert | Would refer patients to this marketplace',
+      'Q22 | Likert | Would consider partnering or endorsing',
+      'Q22 | Likert | Practice open to featuring this resource',
+      'Q23 | Ideal version description',
+      'Q24 | Referral contact info',
+      'Q25 | Yes — please reach out',
+      'Q25 | Maybe — send more details first',
+      'Q25 | No — but happy this conversation helped',
+      'Q25 | Preferred Contact Method',
+      'Q25 | Contact Email',
+      'Q25 | Contact Cell',
+    ];
+
+    const payload = {};
+    FIELD_ORDER.forEach(k => {
+      if (k === '_submitted_at') { payload[k] = new Date().toLocaleString(); return; }
+      if (k === '_respondent')   { payload[k] = respName; return; }
+      const v   = data[k];
+      const val = Array.isArray(v)
+        ? (v.filter(x => x && x !== 'null').join('; ') || 'null')
+        : (v !== undefined ? (String(v).trim() || 'null') : 'null');
+      payload[k] = val;
+    });
+
+    // Also catch any fields not in the master list (future-proofing)
     Object.entries(data).forEach(([k, v]) => {
-      if (k.startsWith('_')) return;
+      if (k.startsWith('_') || payload.hasOwnProperty(k)) return;
       const val = Array.isArray(v)
         ? (v.filter(x => x && x !== 'null').join('; ') || 'null')
         : (String(v || '').trim() || 'null');
