@@ -58,6 +58,14 @@ nav{position:fixed;top:0;left:0;right:0;background:rgba(245,240,232,0.97);backdr
   .check-label:has(input[name="contact-method"]:checked){background:var(--sage-pale);border-color:var(--sage-mid)!important}
   .check-label input[name="contact-method"]:checked{background:var(--sage);border-color:var(--sage)}
   .check-label input[name="contact-method"]:checked::after{content:'';position:absolute;left:4px;top:4px;width:6px;height:6px;border-radius:50%;background:white}
+  
+  .contact-pills{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+  .contact-pill{display:flex;align-items:center;cursor:pointer}
+  .contact-pill input[type=radio]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+  .contact-pill span{display:inline-block;padding:9px 22px;border-radius:100px;border:1.5px solid var(--line);background:var(--canvas);font-size:15px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:500;color:var(--ink-soft);cursor:pointer;transition:all 0.15s;user-select:none}
+  .contact-pill:hover span{border-color:var(--sage-mid);background:var(--sage-pale)}
+  .contact-pill input[type=radio]:checked + span{background:var(--sage-pale);border-color:var(--sage-mid);color:var(--sage)}
+
   @media(max-width:900px){.hero-inner{flex-direction:column}.hero-figure{display:none}}
 
   .hero-kicker{font-family:'Playfair Display',serif;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--sage-mid);font-weight:400;font-style:italic;margin-bottom:18px;display:flex;align-items:center;gap:8px}
@@ -273,6 +281,14 @@ textarea.xtall{min-height:175px}
   .check-label:has(input[name="contact-method"]:checked){background:var(--sage-pale);border-color:var(--sage-mid)!important}
   .check-label input[name="contact-method"]:checked{background:var(--sage);border-color:var(--sage)}
   .check-label input[name="contact-method"]:checked::after{content:'';position:absolute;left:4px;top:4px;width:6px;height:6px;border-radius:50%;background:white}
+  
+  .contact-pills{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
+  .contact-pill{display:flex;align-items:center;cursor:pointer}
+  .contact-pill input[type=radio]{position:absolute;opacity:0;width:0;height:0;pointer-events:none}
+  .contact-pill span{display:inline-block;padding:9px 22px;border-radius:100px;border:1.5px solid var(--line);background:var(--canvas);font-size:15px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:500;color:var(--ink-soft);cursor:pointer;transition:all 0.15s;user-select:none}
+  .contact-pill:hover span{border-color:var(--sage-mid);background:var(--sage-pale)}
+  .contact-pill input[type=radio]:checked + span{background:var(--sage-pale);border-color:var(--sage-mid);color:var(--sage)}
+
   @media(max-width:900px){.main-wrap{grid-template-columns:1fr}.sidebar{display:none}.form-area{padding:28px 16px 60px}.options-grid{grid-template-columns:1fr}.hero{padding:48px 20px 40px}nav{padding:0 16px}.section-tabs{padding:0 16px}}
 
   /* ── CONFIDENTIALITY BANNER */
@@ -1105,21 +1121,21 @@ textarea.xtall{min-height:175px}
 
       <div class="write-in-block" style="margin-top:20px;">
         <span class="write-in-label">Preferred method of contact</span>
-        <div style="display:flex;gap:12px;margin-top:8px;padding-left:0;">
-          <label class="check-label" style="padding:10px 20px;border-radius:100px;border:1.5px solid var(--line);background:var(--canvas);cursor:pointer;transition:all 0.15s;">
-            <input type="radio" name="contact-method" value="Email" onchange="toggleCheck(this)" style="appearance:none;-webkit-appearance:none;width:16px;height:16px;border:1.5px solid var(--line);border-radius:50%;flex-shrink:0;cursor:pointer;transition:all 0.15s;position:relative;background:white;">
-            <span class="check-text" style="font-weight:500;">Email</span>
+        <div class="contact-pills">
+          <label class="contact-pill">
+            <input type="radio" name="contact-method" value="Email" onchange="selectPill(this)">
+            <span>Email</span>
           </label>
-          <label class="check-label" style="padding:10px 20px;border-radius:100px;border:1.5px solid var(--line);background:var(--canvas);cursor:pointer;transition:all 0.15s;">
-            <input type="radio" name="contact-method" value="Cell" onchange="toggleCheck(this)" style="appearance:none;-webkit-appearance:none;width:16px;height:16px;border:1.5px solid var(--line);border-radius:50%;flex-shrink:0;cursor:pointer;transition:all 0.15s;position:relative;background:white;">
-            <span class="check-text" style="font-weight:500;">Cell</span>
+          <label class="contact-pill">
+            <input type="radio" name="contact-method" value="Cell" onchange="selectPill(this)">
+            <span>Cell</span>
           </label>
-          <label class="check-label" style="padding:10px 20px;border-radius:100px;border:1.5px solid var(--line);background:var(--canvas);cursor:pointer;transition:all 0.15s;">
-            <input type="radio" name="contact-method" value="Either" onchange="toggleCheck(this)" style="appearance:none;-webkit-appearance:none;width:16px;height:16px;border:1.5px solid var(--line);border-radius:50%;flex-shrink:0;cursor:pointer;transition:all 0.15s;position:relative;background:white;">
-            <span class="check-text" style="font-weight:500;">Either</span>
+          <label class="contact-pill">
+            <input type="radio" name="contact-method" value="Either" onchange="selectPill(this)">
+            <span>Either</span>
           </label>
         </div>
-      </div>
+        </div>
 
       <div class="write-in-block" style="margin-top:16px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
@@ -1657,6 +1673,14 @@ function toggleContactFields(method) {
     emailField.style.borderColor = 'var(--sage-mid)';
     cellField.style.borderColor  = 'var(--sage-mid)';
   }
+}
+
+function selectPill(radio) {
+  // Update visual state of all pills in the same group
+  document.querySelectorAll(`input[name="${radio.name}"]`).forEach(r => {
+    r.closest('.contact-pill')?.querySelector('span')?.style && null;
+  });
+  updateProgress();
 }
 
 function showToast(msg) {
