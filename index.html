@@ -1428,13 +1428,69 @@ function collectFormData() {
 }
 
 
-// ── Save to localStorage
+// ── Save to localStorage — stores raw form state (not the submission payload)
 function saveProgress() {
   try {
-    localStorage.setItem('wellsco_obs_draft', JSON.stringify(collectFormData()));
+    const snapshot = {};
+
+    // Save all text/email/date/tel inputs by id
+    document.querySelectorAll('input[id][type="text"], input[id][type="email"], input[id][type="date"], input[id][type="tel"]').forEach(el => {
+      snapshot['id:' + el.id] = el.value;
+    });
+
+    // Save all named radio groups
+    document.querySelectorAll('input[type="radio"]:checked').forEach(el => {
+      if (el.name) snapshot['radio:' + el.name] = el.value;
+    });
+
+    // Save all named checkbox groups
+    const cbGroups = {};
+    document.querySelectorAll('input[type="checkbox"]').forEach(el => {
+      if (!el.name) return;
+      if (!cbGroups[el.name]) cbGroups[el.name] = [];
+      if (el.checked) cbGroups[el.name].push(el.value);
+    });
+    Object.entries(cbGroups).forEach(([name, vals]) => {
+      snapshot['cb:' + name] = vals;
+    });
+
+    // Save textareas — index by question id + position
+    document.querySelectorAll('.question').forEach(q => {
+      q.querySelectorAll('textarea').forEach((ta, i) => {
+        if (ta.value.trim()) snapshot['ta:' + q.id + ':' + i] = ta.value;
+      });
+    });
+
+    // Save other-text-inputs by question id + position
+    document.querySelectorAll('.question').forEach(q => {
+      q.querySelectorAll('.other-text-input').forEach((inp, i) => {
+        if (inp.value.trim()) snapshot['other:' + q.id + ':' + i] = inp.value;
+      });
+    });
+
+    // Save product grid
+    document.querySelectorAll('.product-grid tbody tr').forEach((row, i) => {
+      row.querySelectorAll('input[type="text"]').forEach((cell, j) => {
+        if (cell.value.trim()) snapshot['pg:' + i + ':' + j] = cell.value;
+      });
+    });
+
+    // Save rank selects
+    document.querySelectorAll('.rank-row').forEach((row, i) => {
+      const sel = row.querySelector('.rank-select');
+      if (sel?.value) snapshot['rank:' + i] = sel.value;
+    });
+
+    // Save symptom grid text inputs (Other rows)
+    document.querySelectorAll('#symptom-tbody tr').forEach((row, i) => {
+      const inp = row.querySelector('input[type="text"]');
+      if (inp?.value?.trim()) snapshot['sym-text:' + i] = inp.value;
+    });
+
+    localStorage.setItem('wellsco_obs_draft', JSON.stringify(snapshot));
     showToast('✓ Draft saved — your answers are stored in this browser. Return any time to continue.');
   } catch(e) {
-    showToast('⚠ Could not save — please ensure browser storage is enabled.');
+    showToast('⚠ Could not save — please ensure cookies / local storage are enabled in your browser.');
   }
 }
 
@@ -1443,18 +1499,85 @@ function restoreDraft() {
   try {
     const saved = localStorage.getItem('wellsco_obs_draft');
     if (!saved) return;
-    const data = JSON.parse(saved);
-    Object.entries(data).forEach(([name, value]) => {
-      document.querySelectorAll(`[name="${name}"]`).forEach(el => {
-        if (el.type === 'radio')   { if (el.value === value) { el.checked = true; el.closest('.check-label')?.classList.add('checked'); } }
-        if (el.type === 'checkbox') { if (Array.isArray(value) && value.includes(el.value)) { el.checked = true; el.closest('.check-label')?.classList.add('checked'); } }
-      });
-      const byId = document.getElementById(name);
-      if (byId && byId.type !== 'radio' && byId.type !== 'checkbox' && typeof value === 'string') byId.value = value;
+    const snapshot = JSON.parse(saved);
+
+    Object.entries(snapshot).forEach(([key, value]) => {
+      if (key.startsWith('id:')) {
+        const el = document.getElementById(key.slice(3));
+        if (el) el.value = value;
+
+      } else if (key.startsWith('radio:')) {
+        const name = key.slice(6);
+        document.querySelectorAll(`input[type="radio"][name="${name}"]`).forEach(el => {
+          if (el.value === value) {
+            el.checked = true;
+            el.closest('.check-label')?.classList.add('checked');
+          }
+        });
+
+      } else if (key.startsWith('cb:')) {
+        const name = key.slice(3);
+        const vals = Array.isArray(value) ? value : [value];
+        document.querySelectorAll(`input[type="checkbox"][name="${name}"]`).forEach(el => {
+          if (vals.includes(el.value)) {
+            el.checked = true;
+            el.closest('.check-label')?.classList.add('checked');
+          }
+        });
+
+      } else if (key.startsWith('ta:')) {
+        const [, qid, idx] = key.split(':');
+        const q = document.getElementById(qid);
+        if (q) {
+          const tas = q.querySelectorAll('textarea');
+          if (tas[parseInt(idx)]) tas[parseInt(idx)].value = value;
+        }
+
+      } else if (key.startsWith('other:')) {
+        const [, qid, idx] = key.split(':');
+        const q = document.getElementById(qid);
+        if (q) {
+          const inps = q.querySelectorAll('.other-text-input');
+          if (inps[parseInt(idx)]) {
+            inps[parseInt(idx)].value = value;
+            // Also check the associated checkbox
+            const cb = inps[parseInt(idx)].closest('.other-input-wrap')?.querySelector('input[type="checkbox"]');
+            if (cb) { cb.checked = true; cb.value = 'Other: ' + value; }
+          }
+        }
+
+      } else if (key.startsWith('pg:')) {
+        const [, rowIdx, cellIdx] = key.split(':');
+        const rows = document.querySelectorAll('.product-grid tbody tr');
+        const row = rows[parseInt(rowIdx)];
+        if (row) {
+          const cells = row.querySelectorAll('input[type="text"]');
+          if (cells[parseInt(cellIdx)]) cells[parseInt(cellIdx)].value = value;
+        }
+
+      } else if (key.startsWith('rank:')) {
+        const idx = parseInt(key.slice(5));
+        const rows = document.querySelectorAll('.rank-row');
+        if (rows[idx]) {
+          const sel = rows[idx].querySelector('.rank-select');
+          if (sel) sel.value = value;
+        }
+
+      } else if (key.startsWith('sym-text:')) {
+        const idx = parseInt(key.slice(9));
+        const rows = document.querySelectorAll('#symptom-tbody tr');
+        if (rows[idx]) {
+          const inp = rows[idx].querySelector('input[type="text"]');
+          if (inp) inp.value = value;
+        }
+      }
     });
+
     updateSidebar();
     updateProgress();
-  } catch(e) {}
+  } catch(e) {
+    console.warn('Could not restore draft:', e);
+  }
 }
 
 // ── Submit to Formspree
@@ -1462,21 +1585,34 @@ async function submitForm() {
   const btn = document.querySelector('.btn-primary');
   btn.disabled = true;
   btn.textContent = 'Submitting…';
+
   const data = collectFormData();
-  const role = data['resp-role'] || 'Clinician';
-  const respName = data['Respondent Name'] || role;
-  data['_subject'] = `Wells Market Co. · Obstetrics Survey · ${respName} · ${new Date().toLocaleDateString()}`;
-  data['_replyto'] = data['Preferred Contact Email'] || '';
-  data['_format'] = 'plain';
-  data['_format'] = 'plain';
-  const flat = {};
-  Object.entries(data).forEach(([k, v]) => { flat[k] = Array.isArray(v) ? (v.length ? v.join('; ') : '') : (v || ''); });
+  const respName = data['Respondent Name'] || 'Clinician';
+
+  // Build payload — strip null/empty values to keep payload lean
+  // Formspree has field limits, so only send fields with real data
+  const payload = {
+    _subject: `Wells Market Co. · Obstetrics Survey · ${respName} · ${new Date().toLocaleDateString()}`,
+    _replyto: data['Preferred Contact Email'] || '',
+  };
+
+  Object.entries(data).forEach(([k, v]) => {
+    if (!k.startsWith('_')) {
+      const val = Array.isArray(v) ? v.filter(x => x && x !== 'null').join('; ') : String(v || '');
+      // Only include if it has real content (skip pure-null fields to save space)
+      if (val && val !== 'null') {
+        payload[k] = val;
+      }
+    }
+  });
+
   try {
     const res = await fetch(FORMSPREE_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(flat)
+      body: JSON.stringify(payload)
     });
+
     if (res.ok) {
       document.getElementById('progress-bar').style.width = '100%';
       try { localStorage.removeItem('wellsco_obs_draft'); } catch(e) {}
@@ -1489,12 +1625,18 @@ async function submitForm() {
           <p>Thank you — your response has been received. We may be in touch if you opted in to a follow-up.</p>
         </div>`;
     } else {
-      throw new Error('Submission failed');
+      // Read the actual error from Formspree
+      let errMsg = 'Submission failed';
+      try {
+        const errData = await res.json();
+        errMsg = errData?.error || errData?.errors?.map(e => e.message).join(', ') || errMsg;
+      } catch(e) {}
+      throw new Error(errMsg);
     }
   } catch(err) {
     btn.disabled = false;
     btn.innerHTML = '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Submit Survey';
-    showToast('⚠ Could not submit — please try again.');
+    showToast('⚠ ' + (err.message || 'Could not submit — please try again.'));
   }
 }
 
