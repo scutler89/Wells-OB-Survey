@@ -1184,6 +1184,79 @@ textarea.xtall{min-height:175px}
 const SUBMIT_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzbqCifngMgJQcFKBrD7b618LicWXZSzLWtqiWNeGq-jQgez0xjnovTFg4CRZn15nQY/exec';
 
 // ── Checkbox / radio visual toggle
+// ── Initialise form: assign names/values to inputs + wire auto-check on Other fields
+function initFormInputs() {
+  document.querySelectorAll('.question').forEach(q => {
+    const qnum     = q.querySelector('.q-num')?.textContent?.trim() || q.id || 'q';
+    const safeName = 'q_' + qnum.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+
+    // Stamp name + value onto every checkbox
+    q.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (!cb.name) cb.name = safeName;
+      if (!cb.value || cb.value === 'on') {
+        const labelEl = cb.closest('.check-label')?.querySelector('.check-text');
+        if (labelEl) {
+          const clone = labelEl.cloneNode(true);
+          clone.querySelectorAll('em').forEach(e => e.remove());
+          cb.value = clone.textContent.trim();
+        }
+      }
+    });
+
+    // Stamp name + value onto every radio
+    q.querySelectorAll('input[type="radio"]').forEach(r => {
+      if (!r.value || r.value === 'on') {
+        const labelEl = r.closest('.check-label')?.querySelector('.check-text');
+        if (labelEl) {
+          const clone = labelEl.cloneNode(true);
+          clone.querySelectorAll('em').forEach(e => e.remove());
+          r.value = clone.textContent.trim();
+        }
+      }
+    });
+
+    // Wire auto-check: typing in an Other field checks its checkbox
+    q.querySelectorAll('.other-text-input').forEach(inp => {
+      inp.addEventListener('input', function() {
+        const wrap = this.closest('.other-input-wrap');
+        const cb   = wrap?.querySelector('input[type="checkbox"]');
+        if (!cb) return;
+        if (this.value.trim()) {
+          cb.checked = true;
+          cb.value   = 'Other: ' + this.value.trim();
+          cb.closest('.check-label')?.classList.add('checked');
+        } else {
+          cb.checked = false;
+          cb.closest('.check-label')?.classList.remove('checked');
+        }
+        updateProgress();
+      });
+    });
+  });
+}
+
+// ── Prevent duplicate rank values in Q6
+function initRankSelects() {
+  const selects = document.querySelectorAll('.rank-select');
+  selects.forEach(sel => {
+    sel.addEventListener('change', function() {
+      const chosen = this.value;
+      if (!chosen) return;
+      selects.forEach(other => {
+        if (other !== this && other.value === chosen) {
+          other.value = '';
+          const row = other.closest('.rank-row');
+          if (row) {
+            row.style.transition = 'background 0.2s';
+            row.style.background = 'rgba(217,79,79,0.12)';
+            setTimeout(() => { row.style.background = ''; }, 600);
+          }
+        }
+      });
+    });
+  });
+}
+
 function toggleCheck(el) {
   const label = el.closest('.check-label');
   if (!label) return;
@@ -1620,19 +1693,38 @@ async function submitForm() {
       if (val && val !== 'null') payload[k] = val;
     });
 
-    // Send as URL-encoded form data — most reliable for Google Apps Script
-    const formBody = Object.entries(payload)
-      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v))
-      .join('&');
+    // Use a hidden form + iframe submit — bypasses CORS entirely
+    // Google Apps Script receives it as a standard form POST
+    const iframe = document.createElement('iframe');
+    iframe.name = 'hidden_submit';
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
 
-    await fetch(SUBMIT_ENDPOINT, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formBody
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = SUBMIT_ENDPOINT;
+    form.target = 'hidden_submit';
+    form.style.display = 'none';
+
+    // Add each field as a hidden input
+    Object.entries(payload).forEach(([k, v]) => {
+      const input = document.createElement('input');
+      input.type  = 'hidden';
+      input.name  = k;
+      input.value = v;
+      form.appendChild(input);
     });
 
-    // no-cors = can't read response, but if fetch didn't throw it went through
+    document.body.appendChild(form);
+    form.submit();
+
+    // Give the iframe a moment to send, then show success
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Clean up
+    document.body.removeChild(form);
+    document.body.removeChild(iframe);
+
     document.getElementById('progress-bar').style.width = '100%';
     try { localStorage.removeItem('wellsco_obs_draft'); } catch(e) {}
     document.querySelector('.submit-section').innerHTML = `
@@ -1650,6 +1742,13 @@ async function submitForm() {
     showToast('⚠ Could not submit — please check your connection and try again.');
   }
 }
+
+// ── Initialise on page load
+window.addEventListener('load', function() {
+  initFormInputs();
+  initRankSelects();
+  restoreDraft();
+});
 </script>
 </body>
 </html>
