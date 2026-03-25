@@ -1680,7 +1680,7 @@ async function submitForm() {
     const data = collectFormData();
     const respName = data['Respondent Name'] || 'Clinician';
 
-    // Build payload — full labels, skip nulls
+    // Build payload — always include every field, 'null' if unanswered
     const payload = {
       '_submitted_at': new Date().toLocaleString(),
       '_respondent':   respName,
@@ -1688,9 +1688,9 @@ async function submitForm() {
     Object.entries(data).forEach(([k, v]) => {
       if (k.startsWith('_')) return;
       const val = Array.isArray(v)
-        ? v.filter(x => x && x !== 'null').join('; ')
-        : String(v || '');
-      if (val && val !== 'null') payload[k] = val;
+        ? (v.filter(x => x && x !== 'null').join('; ') || 'null')
+        : (String(v || '').trim() || 'null');
+      payload[k] = val;
     });
 
     // Use a hidden form + iframe submit — bypasses CORS entirely
