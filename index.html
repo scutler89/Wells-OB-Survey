@@ -2115,8 +2115,11 @@ async function submitForm() {
       payload[k] = val;
     });
 
-    // Use a hidden form + iframe submit — bypasses CORS entirely
-    // Google Apps Script receives it as a standard form POST
+    // Send as two JSON fields: ordered headers array + values array
+    // This guarantees column order in Google Sheets regardless of browser behaviour
+    const orderedHeaders = FIELD_ORDER.filter(k => k !== '_respondent');
+    const orderedValues  = orderedHeaders.map(k => payload[k] !== undefined ? payload[k] : 'null');
+
     const iframe = document.createElement('iframe');
     iframe.name = 'hidden_submit';
     iframe.style.display = 'none';
@@ -2128,14 +2131,14 @@ async function submitForm() {
     form.target = 'hidden_submit';
     form.style.display = 'none';
 
-    // Add each field as a hidden input
-    Object.entries(payload).forEach(([k, v]) => {
-      const input = document.createElement('input');
-      input.type  = 'hidden';
-      input.name  = k;
-      input.value = v;
-      form.appendChild(input);
-    });
+    // Send headers and values as JSON strings — Apps Script will parse and order correctly
+    const addField = (name, value) => {
+      const inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = name; inp.value = value;
+      form.appendChild(inp);
+    };
+    addField('_headers', JSON.stringify(orderedHeaders));
+    addField('_values',  JSON.stringify(orderedValues));
 
     document.body.appendChild(form);
     form.submit();
